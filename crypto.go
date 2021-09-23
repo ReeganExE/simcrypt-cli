@@ -5,54 +5,58 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
+	"errors"
 	"io"
 )
 
-func hashPassword(p []byte) []byte {
-	b := sha256.Sum256(p)
-	return b[:]
-}
-
-func encodeBase64(b []byte) string {
-	return base64.StdEncoding.EncodeToString(b)
-}
-
-func decodeBase64(s string) []byte {
-	data, err := base64.StdEncoding.DecodeString(s)
+// Encrypt encrypts data using 256-bit AES-GCM.  This both hides the content of
+// the data and provides a check that it hasn't been altered. Output takes the
+// form nonce|ciphertext|tag where '|' indicates concatenation.
+// Original: https://github.com/gtank/cryptopasta
+func Encrypt(plaintext []byte, key []byte) (ciphertext []byte, err error) {
+	k := sha256.Sum256(key)
+	block, err := aes.NewCipher(k[:])
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return data
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	_, err = io.ReadFull(rand.Reader, nonce)
+	if err != nil {
+		return nil, err
+	}
+
+	return gcm.Seal(nonce, nonce, plaintext, nil), nil
 }
 
-func encrypt(key, text []byte) string {
-	block, err := aes.NewCipher(key)
+// Decrypt decrypts data using 256-bit AES-GCM.  This both hides the content of
+// the data and provides a check that it hasn't been altered. Expects input
+// form nonce|ciphertext|tag where '|' indicates concatenation.
+// Original: https://github.com/gtank/cryptopasta
+func Decrypt(ciphertext []byte, key []byte) (plaintext []byte, err error) {
+	k := sha256.Sum256(key)
+	block, err := aes.NewCipher(k[:])
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	ciphertext := make([]byte, aes.BlockSize+len(text))
-	iv := ciphertext[:aes.BlockSize]
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		panic(err)
-	}
-	cfb := cipher.NewCFBEncrypter(block, iv)
-	cfb.XORKeyStream(ciphertext[aes.BlockSize:], text)
-	return encodeBase64(ciphertext)
-}
 
-func decrypt(key []byte, b64 string) string {
-	text := decodeBase64(b64)
-	block, err := aes.NewCipher(key)
+	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	if len(text) < aes.BlockSize {
-		panic("ciphertext too short")
+
+	if len(ciphertext) < gcm.NonceSize() {
+		return nil, errors.New("malformed ciphertext")
 	}
-	iv := text[:aes.BlockSize]
-	text = text[aes.BlockSize:]
-	cfb := cipher.NewCFBDecrypter(block, iv)
-	cfb.XORKeyStream(text, text)
-	return string(text)
+
+	return gcm.Open(nil,
+		ciphertext[:gcm.NonceSize()],
+		ciphertext[gcm.NonceSize():],
+		nil,
+	)
 }

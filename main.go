@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -21,13 +22,27 @@ func main() {
 	}
 	flag.Parse()
 
-	input := read()
 	password := preparePassword()
+	input := read()
 
 	if conf.isDescrypt {
-		fmt.Println(decrypt(hashPassword(password), string(input)))
+		input, err := base64.StdEncoding.DecodeString(string(input))
+		if err != nil {
+			log.Fatalln("Input should be base64 encoded", err)
+		}
+
+		ct, err := Decrypt(input, password)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		// Print the original data without endline
+		fmt.Print(string(ct))
 	} else {
-		fmt.Println(encrypt(hashPassword(password), input))
+		ct, err := Encrypt(input, password)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		fmt.Println(base64.StdEncoding.EncodeToString(ct))
 	}
 }
 
@@ -63,7 +78,7 @@ func read() (d []byte) {
 		}
 		return
 	}
-	fmt.Print("Enter: ")
+	fmt.Print("Enter a data: ")
 	fmt.Scanf("%s", &d)
 	return
 }

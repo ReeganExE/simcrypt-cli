@@ -1,7 +1,7 @@
 # simcrypt-cli
 
 A simple cross platform cli for encrypt/decrypt data.
-It uses AES-256 CFB encryption.
+It uses 256-bit AES-GCM encryption.
 
 ## Usage
 
